@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Weather Explorer</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Three.js & Globe.gl (UMD globals) -->
+    <script src="https://unpkg.com/three@0.157.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/globe.gl@2.32.0/dist/globe.gl.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>">
+
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background: #000; font-family: 'Inter', sans-serif; }
+        
+        /* Glassmorphism Effect */
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        /* Animation */
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div id="globeViz"></div>
+
+    <!-- Search Bar -->
+    <div class="absolute top-6 left-6 z-20 w-80 max-w-[calc(100vw-3rem)]">
+        <div class="glass rounded-2xl shadow-2xl overflow-hidden text-white">
+            <div class="flex items-center gap-2 px-4 py-3">
+                <i data-lucide="search" class="w-4 h-4 text-blue-300 shrink-0"></i>
+                <input id="search-input" type="text" placeholder="Search location…" autocomplete="off" spellcheck="false"
+                    class="flex-1 bg-transparent outline-none placeholder-gray-400 text-sm" />
+                <div id="search-spinner" class="hidden w-4 h-4 border-2 border-blue-300 border-t-transparent rounded-full animate-spin shrink-0"></div>
+            </div>
+            <div id="search-results" class="hidden border-t border-white/10 max-h-64 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <!-- Instruction Overlay -->
+    <div id="instruction" class="absolute bottom-8 left-1/2 transform -translate-x-1/2 text-white/50 text-sm font-light tracking-widest pointer-events-none select-none transition-opacity duration-300">
+        CLICK ANYWHERE TO VIEW WEATHER
+    </div>
+
+    <!-- Weather Card -->
+    <div id="weather-card" class="hidden absolute top-6 right-6 z-10 w-80 rounded-2xl glass shadow-2xl overflow-hidden transition-all duration-300 text-white fade-in">
+        <!-- Header -->
+        <div class="flex items-center justify-between p-4 border-b border-white/10 bg-white/5">
+            <div class="flex items-center gap-2">
+                <i data-lucide="map-pin" class="w-4 h-4 text-blue-300"></i>
+                <span class="text-sm font-medium tracking-wide text-blue-100">Selected Location</span>
+            </div>
+            <button onclick="closeCard()" class="p-1 rounded-full hover:bg-white/10 transition-colors duration-200 focus:outline-none">
+                <i data-lucide="x" class="w-5 h-5 text-gray-300 hover:text-white"></i>
+            </button>
+        </div>
+
+        <div class="p-6">
+            <!-- Location Name -->
+            <div class="mb-4">
+                <h2 id="location-name" class="text-xl font-semibold tracking-tight leading-tight">Locating…</h2>
+                <p id="location-sub" class="text-xs text-gray-400 mt-1 truncate">Resolving place name…</p>
+            </div>
+
+            <!-- Coordinates -->
+            <div class="flex justify-between text-xs text-gray-400 mb-6 font-mono">
+                <span id="lat-display">LAT: 0.0000</span>
+                <span id="lng-display">LNG: 0.0000</span>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="flex flex-col items-center justify-center py-8 space-y-3">
+                <div class="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                <p class="text-sm text-blue-200">Fetching weather data...</p>
+            </div>
+
+            <!-- Data State -->
+            <div id="data-state" class="hidden space-y-6">
+                <!-- Main Weather Info -->
+                <div>
+                    <p id="weather-desc" class="text-lg font-medium text-blue-100">Clear Sky</p>
+                    <div class="text-5xl font-light tracking-tighter mt-1">
+                        <span id="temp-value">--</span>
+                        <span id="temp-unit" class="text-2xl text-blue-300 align-top ml-1">°C</span>
+                    </div>
+                </div>
+
+                <!-- Grid -->
+                <div class="grid grid-cols-2 gap-4 mt-4">
+                    <div class="bg-white/5 rounded-xl p-3 flex flex-col gap-1 border border-white/5">
+                        <div class="flex items-center gap-2 text-gray-400 text-xs uppercase tracking-wider">
+                            <i data-lucide="wind" class="w-3 h-3"></i>
+                            Wind
+                        </div>
+                        <span class="text-lg font-medium">
+                            <span id="wind-value">0</span> <span id="wind-unit" class="text-sm text-gray-400">km/h</span>
+                        </span>
+                    </div>
+                    
+                     <div class="bg-white/5 rounded-xl p-3 flex flex-col gap-1 border border-white/5">
+                        <div class="flex items-center gap-2 text-gray-400 text-xs uppercase tracking-wider">
+                            <i data-lucide="thermometer" class="w-3 h-3"></i>
+                            Feels Like
+                        </div>
+                        <span class="text-lg font-medium">
+                            <span id="feels-like-value">0</span> <span class="text-sm text-gray-400">°</span>
+                        </span>
+                    </div>
+                </div>
+
+                <div id="update-time" class="text-xs text-center text-gray-500 mt-2">
+                    Updated: --:--
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Helper Functions ---
+        
+        function getWeatherDescription(code) {
+            const codes = {
+                0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
+                45: 'Fog', 48: 'Depositing rime fog', 51: 'Light drizzle', 53: 'Moderate drizzle',
+                55: 'Dense drizzle', 56: 'Light freezing drizzle', 57: 'Dense freezing drizzle',
+                61: 'Slight rain', 63: 'Moderate rain', 65: 'Heavy rain', 66: 'Light freezing rain',
+                67: 'Heavy freezing rain', 71: 'Slight snow fall', 73: 'Moderate snow fall',
+                75: 'Heavy snow fall', 77: 'Snow grains', 80: 'Slight rain showers',
+                81: 'Moderate rain showers', 82: 'Violent rain showers', 85: 'Slight snow showers',
+                86: 'Heavy snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm with slight hail',
+                99: 'Thunderstorm with heavy hail'
+            };
+            return codes[code] || 'Unknown';
+        }
+
+        async function fetchWeather(lat, lng) {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,weather_code,wind_speed_10m`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('Weather data fetch failed');
+            return res.json();
+        }
+
+        async function fetchLocationName(lat, lng) {
+            // 1) BigDataCloud free reverse-geocode (no key, CORS-enabled)
+            try {
+                const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
+                const res = await fetch(url);
+                if (res.ok) {
+                    const d = await res.json();
+                    const primary = d.city || d.locality || '';
+                    const region = d.principalSubdivision || '';
+                    const country = d.countryName || '';
+                    const informative = (d.localityInfo && d.localityInfo.informative) || [];
+                    const areaName = informative.length ? informative[0].name : '';
+                    if (primary && country) {
+                        const sub = [region, country].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i).join(' · ');
+                        return { title: primary + ', ' + country, subtitle: sub || null };
+                    }
+                    // Ocean / international waters: no country, but informative has e.g. "Pacific Ocean"
+                    if (!country && areaName) {
+                        const sub = [primary, d.plusCode].filter(Boolean).join(' · ');
+                        return { title: areaName, subtitle: sub || null };
+                    }
+                    if (primary) return { title: primary, subtitle: [region, country].filter(Boolean).join(' · ') || null };
+                    if (region && country) return { title: region + ', ' + country, subtitle: null };
+                    if (country) return { title: country, subtitle: region || null };
+                    // empty -> likely ocean, fall through to Nominatim
+                }
+            } catch (e) { console.warn('BigDataCloud reverse-geocode failed', e); }
+
+            // 2) Fallback: OSM Nominatim (often names oceans/seas)
+            try {
+                const url2 = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=jsonv2&zoom=8&accept-language=en`;
+                const res2 = await fetch(url2, { headers: { 'Accept': 'application/json' } });
+                if (res2.ok) {
+                    const d2 = await res2.json();
+                    const a = d2.address || {};
+                    const primary2 = a.city || a.town || a.village || a.hamlet || a.municipality || a.county || a.state || a.ocean || a.sea || a.water || null;
+                    const country2 = a.country || null;
+                    if (primary2 && country2 && primary2 !== country2) return { title: primary2 + ', ' + country2, subtitle: (d2.display_name || '').split(',').slice(0, 3).join(',') || null };
+                    if (primary2) return { title: primary2, subtitle: country2 || d2.display_name || null };
+                    if (d2.display_name) {
+                        const parts = d2.display_name.split(',').map(s => s.trim());
+                        return { title: parts.slice(0, 2).join(', '), subtitle: parts.slice(0, 4).join(', ') };
+                    }
+                    if (d2.name) return { title: d2.name, subtitle: null };
+                }
+            } catch (e) { console.warn('Nominatim reverse-geocode failed', e); }
+
+            return null;
+        }
+
+        // --- 2. UI References ---
+        
+        const card = document.getElementById('weather-card');
+        const instruction = document.getElementById('instruction');
+        const loadingState = document.getElementById('loading-state');
+        const dataState = document.getElementById('data-state');
+
+        // --- 3. Globe Initialization ---
+        
+        const world = Globe()
+            (document.getElementById('globeViz'))
+            .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-blue-marble.jpg')
+            .bumpImageUrl('https://unpkg.com/three-globe/example/img/earth-topology.png')
+            .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+            .atmosphereColor('#3a228a')
+            .atmosphereAltitude(0.15)
+            .objectLat('lat')
+            .objectLng('lng')
+            .objectAltitude(0.01)
+            .objectThreeObject(() => new THREE.Mesh(
+                new THREE.SphereGeometry(0.5, 16, 16),
+                new THREE.MeshLambertMaterial({ color: '#F87171', emissive: '#DC2626', emissiveIntensity: 0.6 })
+            ));
+
+        // Initial Controls
+        world.controls().autoRotate = true;
+        world.controls().autoRotateSpeed = 0.5;
+        world.pointOfView({ lat: 20, lng: 0, altitude: 2.5 });
+
+        // --- 4. Interactions ---
+
+        function selectLocation(lat, lng, knownPlace) {
+            // Stop Rotation & Zoom In
+            world.controls().autoRotate = false;
+            world.pointOfView({ lat, lng, altitude: 1.5 }, 1000);
+
+            // Add Marker
+            world.objectsData([{ lat, lng }]);
+
+            // Show Card UI
+            card.classList.remove('hidden');
+            instruction.classList.add('opacity-0');
+            loadingState.classList.remove('hidden');
+            dataState.classList.add('hidden');
+            
+            // Update Coordinates Text
+            document.getElementById('lat-display').textContent = `LAT: ${lat.toFixed(4)}`;
+            document.getElementById('lng-display').textContent = `LNG: ${lng.toFixed(4)}`;
+
+            // Resolve place name (use known search result immediately if provided)
+            if (knownPlace && knownPlace.title) {
+                document.getElementById('location-name').textContent = knownPlace.title;
+                document.getElementById('location-sub').textContent = knownPlace.subtitle || `${lat.toFixed(2)}°, ${lng.toFixed(2)}°`;
+            } else {
+                document.getElementById('location-name').textContent = 'Locating…';
+                document.getElementById('location-sub').textContent = 'Resolving place name…';
+                fetchLocationName(lat, lng).then(r => {
+                    if (r && r.title) {
+                        document.getElementById('location-name').textContent = r.title;
+                        document.getElementById('location-sub').textContent = r.subtitle || `${lat.toFixed(2)}°, ${lng.toFixed(2)}°`;
+                    } else {
+                        document.getElementById('location-name').textContent = 'Open Ocean';
+                        document.getElementById('location-sub').textContent = 'No nearby place name';
+                    }
+                }).catch(() => {
+                    document.getElementById('location-name').textContent = `${lat.toFixed(2)}°, ${lng.toFixed(2)}°`;
+                    document.getElementById('location-sub').textContent = 'Place name unavailable';
+                });
+            }
+
+            // Fetch Data
+            fetchWeather(lat, lng).then(data => {
+                const { current, current_units } = data;
+                
+                document.getElementById('weather-desc').textContent = getWeatherDescription(current.weather_code);
+                document.getElementById('temp-value').textContent = Math.round(current.temperature_2m);
+                document.getElementById('temp-unit').textContent = '°' + current_units.temperature_2m;
+                
+                document.getElementById('wind-value').textContent = current.wind_speed_10m;
+                document.getElementById('wind-unit').textContent = current_units.wind_speed_10m;
+
+                document.getElementById('feels-like-value').textContent = Math.round(current.temperature_2m);
+                document.getElementById('update-time').textContent = 'Updated: ' + new Date(current.time).toLocaleTimeString();
+
+                // Switch to Data View
+                loadingState.classList.add('hidden');
+                dataState.classList.remove('hidden');
+            }).catch(err => {
+                console.error(err);
+                document.getElementById('weather-desc').textContent = "Unavailable";
+                document.getElementById('temp-value').textContent = "--";
+                loadingState.classList.add('hidden');
+                dataState.classList.remove('hidden');
+            });
+        }
+
+        world.onGlobeClick(({ lat, lng }) => selectLocation(lat, lng));
+
+        // --- 5. Manual location search (Open-Meteo geocoding, no key) ---
+
+        async function searchLocations(query) {
+            const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=en&format=json`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error('Geocoding failed');
+            const data = await res.json();
+            return data.results || [];
+        }
+
+        function formatResult(r) {
+            const title = r.country ? `${r.name}, ${r.country}` : r.name;
+            const parts = [r.admin1, r.country].filter(Boolean).filter((v, i, a) => a.indexOf(v) === i);
+            return { title, subtitle: parts.join(' · ') || `${r.latitude.toFixed(2)}°, ${r.longitude.toFixed(2)}°` };
+        }
+
+        const searchInput = document.getElementById('search-input');
+        const searchResults = document.getElementById('search-results');
+        const searchSpinner = document.getElementById('search-spinner');
+        let searchDebounce = null;
+        let lastResults = [];
+
+        function hideSearchResults() {
+            searchResults.classList.add('hidden');
+            searchResults.innerHTML = '';
+        }
+
+        function renderSearchResults(results) {
+            lastResults = results;
+            if (!results.length) {
+                searchResults.innerHTML = '<div class="px-4 py-3 text-sm text-gray-400">No results found</div>';
+                searchResults.classList.remove('hidden');
+                return;
+            }
+            searchResults.innerHTML = '';
+            results.forEach((r, i) => {
+                const f = formatResult(r);
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-left px-4 py-3 hover:bg-white/10 transition-colors border-b border-white/5 last:border-0 focus:outline-none focus:bg-white/10';
+                btn.innerHTML = '';
+                const t = document.createElement('div');
+                t.className = 'text-sm font-medium truncate';
+                t.textContent = f.title;
+                const s = document.createElement('div');
+                s.className = 'text-xs text-gray-400 truncate mt-0.5';
+                s.textContent = f.subtitle;
+                btn.appendChild(t);
+                btn.appendChild(s);
+                btn.addEventListener('click', () => {
+                    hideSearchResults();
+                    searchInput.value = f.title;
+                    selectLocation(r.latitude, r.longitude, f);
+                });
+                btn.dataset.index = i;
+                searchResults.appendChild(btn);
+            });
+            searchResults.classList.remove('hidden');
+        }
+
+        searchInput.addEventListener('input', () => {
+            const q = searchInput.value.trim();
+            clearTimeout(searchDebounce);
+            if (q.length < 2) { hideSearchResults(); searchSpinner.classList.add('hidden'); return; }
+            searchDebounce = setTimeout(async () => {
+                searchSpinner.classList.remove('hidden');
+                try {
+                    const results = await searchLocations(q);
+                    renderSearchResults(results);
+                } catch (e) {
+                    console.warn('Search failed', e);
+                    searchResults.innerHTML = '<div class="px-4 py-3 text-sm text-gray-400">Search unavailable</div>';
+                    searchResults.classList.remove('hidden');
+                } finally {
+                    searchSpinner.classList.add('hidden');
+                }
+            }, 300);
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && lastResults.length && !searchResults.classList.contains('hidden')) {
+                const r = lastResults[0];
+                const f = formatResult(r);
+                hideSearchResults();
+                searchInput.value = f.title;
+                selectLocation(r.latitude, r.longitude, f);
+            } else if (e.key === 'Escape') {
+                hideSearchResults();
+                searchInput.blur();
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('#search-input') && !e.target.closest('#search-results')) hideSearchResults();
+        });
+
+        // Expose close function to global scope for button onclick
+        window.closeCard = function() {
+            card.classList.add('hidden');
+            instruction.classList.remove('opacity-0');
+            world.objectsData([]); // Remove marker
+            world.controls().autoRotate = true; // Resume rotation
+        };
+
+        // Initialize Icons
+        lucide.createIcons();
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            world.width(window.innerWidth);
+            world.height(window.innerHeight);
+        });
+    </script>
+</body>
+</html>

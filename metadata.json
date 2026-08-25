@@ -1,0 +1,5 @@
+{
+  "name": "Global Weather Explorer",
+  "description": "A minimalist 3D globe application that allows users to click anywhere on Earth to view real-time weather data using the Open-Meteo API.",
+  "requestFramePermissions": []
+}
