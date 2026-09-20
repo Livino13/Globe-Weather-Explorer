@@ -23,9 +23,9 @@ There is **no API key, signup, or backend** involved. Everything runs client-sid
 
 ## 📸 Screenshots
 
-| Initial view | After clicking a location |
-| --- | --- |
-| ![Globe initial view](screenshots/globe-initial.png) | ![Weather card](screenshots/globe-weather-card.png) |
+| Initial view | After clicking a location | Manual search |
+| --- | --- | --- |
+| ![Globe initial view](screenshots/globe-initial.png) | ![Weather card](screenshots/globe-weather-card.png) | ![Search location](screenshots/globe-search.png) |
 
 ## 🚀 Features
 
